@@ -31,13 +31,16 @@ const BRICK_HEIGHT = 20;
 const BRICK_ROWS = 8;
 const BRICK_COLS = 10;
 const BRICK_PADDING = 5;
-const BALL_SPEED = 5;
+const INITIAL_BALL_SPEED = 2; // Much slower starting speed
+const MAX_BALL_SPEED = 8; // Maximum speed cap
+const SPEED_INCREASE_FACTOR = 0.1; // Speed increase per brick destroyed
 
 export default function BrickBreaker() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationIdRef = useRef<number | undefined>(undefined);
   const [gameState, setGameState] = useState<'playing' | 'paused' | 'gameOver' | 'won'>('playing');
   const [score, setScore] = useState(0);
+  const [speed, setSpeed] = useState(INITIAL_BALL_SPEED);
   
   // Game objects
   const gameStateRef = useRef({
@@ -46,9 +49,9 @@ export default function BrickBreaker() {
       y: CANVAS_HEIGHT - 50,
       width: BALL_SIZE,
       height: BALL_SIZE,
-      dx: BALL_SPEED * (Math.random() > 0.5 ? 1 : -1),
-      dy: -BALL_SPEED,
-      speed: BALL_SPEED
+      dx: INITIAL_BALL_SPEED * (Math.random() > 0.5 ? 1 : -1),
+      dy: -INITIAL_BALL_SPEED,
+      speed: INITIAL_BALL_SPEED
     } as Ball,
     paddle: {
       x: CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2,
@@ -60,7 +63,8 @@ export default function BrickBreaker() {
     keys: {
       left: false,
       right: false
-    }
+    },
+    totalBricksDestroyed: 0
   });
 
   // Initialize bricks
@@ -119,22 +123,40 @@ export default function BrickBreaker() {
     // Ball collision with paddle
     if (checkCollision(ball, paddle) && ball.dy > 0) {
       const hitPos = (ball.x + ball.width / 2 - paddle.x) / paddle.width;
-      ball.dx = ball.speed * (hitPos - 0.5) * 2;
+      const newDx = ball.speed * (hitPos - 0.5) * 2;
+      ball.dx = newDx;
       ball.dy = -Math.abs(ball.dy);
     }
 
     // Ball collision with bricks
     let newScore = 0;
+    let bricksDestroyed = 0;
     bricks.forEach(brick => {
       if (!brick.destroyed && checkCollision(ball, brick)) {
         brick.destroyed = true;
         ball.dy = -ball.dy;
         newScore += 10;
+        bricksDestroyed++;
+        gameStateRef.current.totalBricksDestroyed++;
       }
     });
 
     if (newScore > 0) {
       setScore(prev => prev + newScore);
+      
+      // Increase speed progressively
+      const newSpeed = Math.min(
+        INITIAL_BALL_SPEED + (gameStateRef.current.totalBricksDestroyed * SPEED_INCREASE_FACTOR),
+        MAX_BALL_SPEED
+      );
+      
+      // Update ball speed and direction vectors
+      const currentDirection = Math.atan2(ball.dy, ball.dx);
+      ball.speed = newSpeed;
+      ball.dx = Math.cos(currentDirection) * newSpeed;
+      ball.dy = Math.sin(currentDirection) * newSpeed;
+      
+      setSpeed(newSpeed);
     }
 
     // Check game over conditions
@@ -226,13 +248,15 @@ export default function BrickBreaker() {
       y: CANVAS_HEIGHT - 50,
       width: BALL_SIZE,
       height: BALL_SIZE,
-      dx: BALL_SPEED * (Math.random() > 0.5 ? 1 : -1),
-      dy: -BALL_SPEED,
-      speed: BALL_SPEED
+      dx: INITIAL_BALL_SPEED * (Math.random() > 0.5 ? 1 : -1),
+      dy: -INITIAL_BALL_SPEED,
+      speed: INITIAL_BALL_SPEED
     };
     gameStateRef.current.paddle.x = CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2;
+    gameStateRef.current.totalBricksDestroyed = 0;
     initializeBricks();
     setScore(0);
+    setSpeed(INITIAL_BALL_SPEED);
     setGameState('playing');
   }, [initializeBricks]);
 
@@ -271,9 +295,10 @@ export default function BrickBreaker() {
 
   return (
     <div className="flex flex-col items-center gap-4 p-4">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-6">
         <h1 className="text-2xl font-bold">Brick Breaker</h1>
         <div className="text-xl">Score: {score}</div>
+        <div className="text-lg text-blue-600">Speed: {speed.toFixed(1)}</div>
       </div>
       
       <canvas
@@ -328,6 +353,7 @@ export default function BrickBreaker() {
       <div className="text-sm text-gray-600 text-center">
         <div>Use ← → arrow keys or A/D to move paddle</div>
         <div>Press SPACE to pause/resume</div>
+        <div className="text-xs mt-1 text-blue-500">Speed increases as you destroy more bricks!</div>
       </div>
     </div>
   );
