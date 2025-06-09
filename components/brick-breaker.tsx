@@ -21,32 +21,46 @@ interface Brick extends GameObject {
   destroyed: boolean;
 }
 
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 600;
-const PADDLE_WIDTH = 100;
-const PADDLE_HEIGHT = 10;
-const BALL_SIZE = 10;
-const BRICK_WIDTH = 75;
-const BRICK_HEIGHT = 20;
-const BRICK_ROWS = 8;
-const BRICK_COLS = 10;
-const BRICK_PADDING = 5;
-const INITIAL_BALL_SPEED = 2; // Much slower starting speed
-const MAX_BALL_SPEED = 8; // Maximum speed cap
-const SPEED_INCREASE_FACTOR = 0.1; // Speed increase per brick destroyed
-
 export default function BrickBreaker() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationIdRef = useRef<number | undefined>(undefined);
   const [gameState, setGameState] = useState<'playing' | 'paused' | 'gameOver' | 'won'>('playing');
   const [score, setScore] = useState(0);
-  const [speed, setSpeed] = useState(INITIAL_BALL_SPEED);
+  const [speed, setSpeed] = useState(2); // Initial speed
+  const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 800 });
+  
+  // Update canvas size based on window size
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      setCanvasSize({ width, height });
+    };
+
+    updateCanvasSize();
+    window.addEventListener('resize', updateCanvasSize);
+    return () => window.removeEventListener('resize', updateCanvasSize);
+  }, []);
+
+  const CANVAS_WIDTH = canvasSize.width;
+  const CANVAS_HEIGHT = canvasSize.height;
+  const PADDLE_WIDTH = Math.max(120, CANVAS_WIDTH * 0.1);
+  const PADDLE_HEIGHT = 12;
+  const BALL_SIZE = 12;
+  const BRICK_WIDTH = Math.max(60, (CANVAS_WIDTH - 200) / 15);
+  const BRICK_HEIGHT = 25;
+  const BRICK_ROWS = 8;
+  const BRICK_COLS = Math.floor((CANVAS_WIDTH - 100) / (BRICK_WIDTH + 8));
+  const BRICK_PADDING = 8;
+  const INITIAL_BALL_SPEED = 2;
+  const MAX_BALL_SPEED = 8;
+  const SPEED_INCREASE_FACTOR = 0.1;
   
   // Game objects
   const gameStateRef = useRef({
     ball: {
       x: CANVAS_WIDTH / 2,
-      y: CANVAS_HEIGHT - 50,
+      y: CANVAS_HEIGHT - 80,
       width: BALL_SIZE,
       height: BALL_SIZE,
       dx: INITIAL_BALL_SPEED * (Math.random() > 0.5 ? 1 : -1),
@@ -55,7 +69,7 @@ export default function BrickBreaker() {
     } as Ball,
     paddle: {
       x: CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2,
-      y: CANVAS_HEIGHT - 30,
+      y: CANVAS_HEIGHT - 40,
       width: PADDLE_WIDTH,
       height: PADDLE_HEIGHT
     } as Paddle,
@@ -70,8 +84,9 @@ export default function BrickBreaker() {
   // Initialize bricks
   const initializeBricks = useCallback(() => {
     const bricks: Brick[] = [];
-    const offsetTop = 50;
-    const offsetLeft = (CANVAS_WIDTH - (BRICK_COLS * (BRICK_WIDTH + BRICK_PADDING) - BRICK_PADDING)) / 2;
+    const offsetTop = 80;
+    const totalBricksWidth = BRICK_COLS * (BRICK_WIDTH + BRICK_PADDING) - BRICK_PADDING;
+    const offsetLeft = (CANVAS_WIDTH - totalBricksWidth) / 2;
     
     for (let row = 0; row < BRICK_ROWS; row++) {
       for (let col = 0; col < BRICK_COLS; col++) {
@@ -86,7 +101,17 @@ export default function BrickBreaker() {
     }
     
     gameStateRef.current.bricks = bricks;
-  }, []);
+  }, [CANVAS_WIDTH, CANVAS_HEIGHT, BRICK_WIDTH, BRICK_COLS]);
+
+  // Update game objects when canvas size changes
+  useEffect(() => {
+    gameStateRef.current.ball.x = CANVAS_WIDTH / 2;
+    gameStateRef.current.ball.y = CANVAS_HEIGHT - 80;
+    gameStateRef.current.paddle.x = CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2;
+    gameStateRef.current.paddle.y = CANVAS_HEIGHT - 40;
+    gameStateRef.current.paddle.width = PADDLE_WIDTH;
+    initializeBricks();
+  }, [CANVAS_WIDTH, CANVAS_HEIGHT, PADDLE_WIDTH, initializeBricks]);
 
   // Collision detection
   const checkCollision = useCallback((rect1: GameObject, rect2: GameObject): boolean => {
@@ -102,10 +127,10 @@ export default function BrickBreaker() {
 
     // Move paddle
     if (keys.left && paddle.x > 0) {
-      paddle.x -= 8;
+      paddle.x -= 10;
     }
     if (keys.right && paddle.x < CANVAS_WIDTH - paddle.width) {
-      paddle.x += 8;
+      paddle.x += 10;
     }
 
     // Move ball
@@ -130,13 +155,11 @@ export default function BrickBreaker() {
 
     // Ball collision with bricks
     let newScore = 0;
-    let bricksDestroyed = 0;
     bricks.forEach(brick => {
       if (!brick.destroyed && checkCollision(ball, brick)) {
         brick.destroyed = true;
         ball.dy = -ball.dy;
         newScore += 10;
-        bricksDestroyed++;
         gameStateRef.current.totalBricksDestroyed++;
       }
     });
@@ -170,7 +193,7 @@ export default function BrickBreaker() {
       setGameState('won');
       return;
     }
-  }, [checkCollision]);
+  }, [checkCollision, CANVAS_WIDTH, CANVAS_HEIGHT]);
 
   // Render game
   const render = useCallback(() => {
@@ -182,24 +205,97 @@ export default function BrickBreaker() {
 
     const { ball, paddle, bricks } = gameStateRef.current;
 
-    // Clear canvas
+    // Clear canvas with deep black background
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Draw paddle
-    ctx.fillStyle = '#ffffff';
+    // Draw paddle with white glass effect
+    const paddleGradient = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x, paddle.y + paddle.height);
+    paddleGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+    paddleGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.7)');
+    paddleGradient.addColorStop(1, 'rgba(255, 255, 255, 0.5)');
+    ctx.fillStyle = paddleGradient;
     ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+    
+    // Add paddle border
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(paddle.x, paddle.y, paddle.width, paddle.height);
 
-    // Draw ball
+    // Draw ball with glowing white effect
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(ball.x, ball.y, ball.width, ball.height);
+    ctx.shadowBlur = 0;
 
-    // Draw bricks
-    bricks.forEach(brick => {
+    // Draw bricks with monochrome glass gradients
+    bricks.forEach((brick, index) => {
       if (!brick.destroyed) {
+        const row = Math.floor(index / BRICK_COLS);
+        
+        // Create opacity gradient based on row (top rows more transparent)
+        const baseOpacity = 0.3 + (row * 0.08); // 0.3 to 0.86
+        
+        const brickGradient = ctx.createLinearGradient(brick.x, brick.y, brick.x, brick.y + brick.height);
+        brickGradient.addColorStop(0, `rgba(255, 255, 255, ${Math.min(baseOpacity + 0.2, 0.9)})`);
+        brickGradient.addColorStop(0.5, `rgba(255, 255, 255, ${baseOpacity})`);
+        brickGradient.addColorStop(1, `rgba(255, 255, 255, ${Math.max(baseOpacity - 0.1, 0.2)})`);
+        
+        ctx.fillStyle = brickGradient;
         ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
+        
+        // Add glass border effect
+        ctx.strokeStyle = `rgba(255, 255, 255, ${baseOpacity * 0.5})`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(brick.x, brick.y, brick.width, brick.height);
+        
+        // Add inner highlight for glass effect
+        ctx.strokeStyle = `rgba(255, 255, 255, ${baseOpacity * 0.3})`;
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(brick.x + 1, brick.y + 1, brick.width - 2, brick.height - 2);
       }
     });
-  }, []);
+
+    // Draw minimal game state overlay
+    if (gameState === 'paused') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.font = '48px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('PAUSED', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      ctx.font = '24px Arial';
+      ctx.fillText('Press SPACE to resume', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);
+    }
+
+    if (gameState === 'gameOver') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.font = '48px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      ctx.font = '24px Arial';
+      ctx.fillText(`Final Score: ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);
+      ctx.fillText('Press R to restart', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 100);
+    }
+
+    if (gameState === 'won') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.font = '48px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('VICTORY!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      ctx.font = '24px Arial';
+      ctx.fillText(`Final Score: ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);
+      ctx.fillText('Press R to restart', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 100);
+    }
+  }, [CANVAS_WIDTH, CANVAS_HEIGHT, BRICK_COLS, gameState, score]);
 
   // Game loop
   const gameLoop = useCallback(() => {
@@ -207,6 +303,8 @@ export default function BrickBreaker() {
       updateGame();
       render();
       animationIdRef.current = requestAnimationFrame(gameLoop);
+    } else {
+      render(); // Still render paused/game over states
     }
   }, [gameState, updateGame, render]);
 
@@ -224,6 +322,10 @@ export default function BrickBreaker() {
       case ' ':
         e.preventDefault();
         setGameState(prev => prev === 'playing' ? 'paused' : 'playing');
+        break;
+      case 'r':
+      case 'R':
+        resetGame();
         break;
     }
   }, []);
@@ -245,7 +347,7 @@ export default function BrickBreaker() {
   const resetGame = useCallback(() => {
     gameStateRef.current.ball = {
       x: CANVAS_WIDTH / 2,
-      y: CANVAS_HEIGHT - 50,
+      y: CANVAS_HEIGHT - 80,
       width: BALL_SIZE,
       height: BALL_SIZE,
       dx: INITIAL_BALL_SPEED * (Math.random() > 0.5 ? 1 : -1),
@@ -258,7 +360,7 @@ export default function BrickBreaker() {
     setScore(0);
     setSpeed(INITIAL_BALL_SPEED);
     setGameState('playing');
-  }, [initializeBricks]);
+  }, [CANVAS_WIDTH, CANVAS_HEIGHT, PADDLE_WIDTH, initializeBricks]);
 
   // Initialize game and event listeners
   useEffect(() => {
@@ -278,83 +380,24 @@ export default function BrickBreaker() {
 
   // Start/stop game loop based on game state
   useEffect(() => {
-    if (gameState === 'playing') {
-      gameLoop();
-    } else {
-      if (animationIdRef.current) {
-        cancelAnimationFrame(animationIdRef.current);
-      }
-    }
-
+    gameLoop();
+    
     return () => {
       if (animationIdRef.current) {
         cancelAnimationFrame(animationIdRef.current);
       }
     };
-  }, [gameState, gameLoop]);
+  }, [gameLoop]);
 
   return (
-    <div className="flex flex-col items-center gap-4 p-4">
-      <div className="flex items-center gap-6">
-        <h1 className="text-2xl font-bold">Brick Breaker</h1>
-        <div className="text-xl">Score: {score}</div>
-        <div className="text-lg text-blue-600">Speed: {speed.toFixed(1)}</div>
-      </div>
-      
+    <div className="w-screen h-screen overflow-hidden bg-black">
       <canvas
         ref={canvasRef}
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
-        className="border border-gray-300 bg-black"
+        className="w-full h-full bg-black"
         style={{ imageRendering: 'pixelated' }}
       />
-      
-      <div className="flex gap-2">
-        {gameState === 'paused' && (
-          <button
-            onClick={() => setGameState('playing')}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-          >
-            Resume
-          </button>
-        )}
-        
-        {(gameState === 'gameOver' || gameState === 'won') && (
-          <div className="text-center">
-            <div className="text-xl mb-2">
-              {gameState === 'won' ? 'You Won!' : 'Game Over!'}
-            </div>
-            <button
-              onClick={resetGame}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Play Again
-            </button>
-          </div>
-        )}
-        
-        {gameState === 'playing' && (
-          <button
-            onClick={() => setGameState('paused')}
-            className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
-          >
-            Pause
-          </button>
-        )}
-        
-        <button
-          onClick={resetGame}
-          className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-        >
-          Reset
-        </button>
-      </div>
-      
-      <div className="text-sm text-gray-600 text-center">
-        <div>Use ← → arrow keys or A/D to move paddle</div>
-        <div>Press SPACE to pause/resume</div>
-        <div className="text-xs mt-1 text-blue-500">Speed increases as you destroy more bricks!</div>
-      </div>
     </div>
   );
 } 
